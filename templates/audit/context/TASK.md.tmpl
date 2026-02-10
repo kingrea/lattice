@@ -1,0 +1,29 @@
+# Audit Task
+
+This project uses beads for issue tracking.
+
+## Bead Prefix
+
+Use `{{ .BeadPrefix }}` for any issues opened from this audit.
+
+## Target
+
+{{ .Target }}
+
+## Roles
+
+{{- range .Roles }}
+- {{ . }}
+{{- end }}
+
+## Focus Areas
+
+{{- range .FocusAreas }}
+- {{ . }}
+{{- end }}
+
+## Rules
+- Only raise issues that have real impact. Do not manufacture problems.
+- Do not raise issues outside the audit's focus areas.
+- If an existing bead already covers a finding, update it - do not create a duplicate.
+- If there are no issues, say so. An empty audit is a valid outcome.
