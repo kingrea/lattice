@@ -1,8 +1,6 @@
 package tui
 
 import (
-	"fmt"
-
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -45,12 +43,6 @@ type AppModel struct {
 	height int
 }
 
-// DashboardModel renders a temporary post-launch status screen.
-type DashboardModel struct {
-	styles Styles
-	cwd    string
-}
-
 // NewApp creates the root app model at the main menu.
 func NewApp(cwd string) AppModel {
 	styles := DefaultStyles()
@@ -66,7 +58,7 @@ func NewApp(cwd string) AppModel {
 		screen:    MenuScreen,
 		menu:      menu,
 		wizard:    wizard,
-		dashboard: DashboardModel{styles: styles, cwd: cwd},
+		dashboard: NewDashboardModel(cwd, styles, keyMap),
 	}
 }
 
@@ -86,6 +78,10 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.screen = typed.Screen
 		if typed.Screen != WizardScreen {
 			m.launchStarted = false
+		}
+		if typed.Screen == DashboardScreen {
+			m.dashboard = NewDashboardModel(m.cwd, m.styles, m.keyMap)
+			return m, m.dashboard.Init()
 		}
 		return m, nil
 	case tea.KeyMsg:
@@ -138,7 +134,8 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.wizard.Step() == AuditWizardStepGenerating && m.wizard.Launched() {
 			m.launchStarted = false
 			m.screen = DashboardScreen
-			return m, nil
+			m.dashboard = NewDashboardModel(m.cwd, m.styles, m.keyMap)
+			return m, m.dashboard.Init()
 		}
 	case DashboardScreen:
 		m.dashboard, cmd = m.dashboard.Update(msg)
@@ -172,30 +169,4 @@ func (m AppModel) View() string {
 // Screen returns the active top-level screen.
 func (m AppModel) Screen() AppScreen {
 	return m.screen
-}
-
-// Update handles dashboard key input.
-func (m DashboardModel) Update(msg tea.Msg) (DashboardModel, tea.Cmd) {
-	if keyMsg, ok := msg.(tea.KeyMsg); ok {
-		if key.Matches(keyMsg, DefaultKeyMap().Back) {
-			return m, func() tea.Msg { return NavigateTo(MenuScreen) }
-		}
-	}
-
-	return m, nil
-}
-
-// View renders a placeholder dashboard screen.
-func (m DashboardModel) View() string {
-	lines := []string{
-		m.styles.Header.Render("Dashboard"),
-		m.styles.Subheader.Render("Audit launched"),
-		"",
-		m.styles.Body.Render("Team status screen is coming next."),
-		m.styles.Muted.Render(fmt.Sprintf("Working directory: %s", m.cwd)),
-		"",
-		m.styles.Help.Render("esc: menu • q: quit"),
-	}
-
-	return lipgloss.JoinVertical(lipgloss.Left, lines...)
 }
