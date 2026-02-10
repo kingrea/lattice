@@ -39,6 +39,8 @@ type AppModel struct {
 	wizard    AuditWizardModel
 	dashboard DashboardModel
 
+	launchStarted bool
+
 	width  int
 	height int
 }
@@ -82,6 +84,9 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case AppNavigateMsg:
 		m.screen = typed.Screen
+		if typed.Screen != WizardScreen {
+			m.launchStarted = false
+		}
 		return m, nil
 	case tea.KeyMsg:
 		if key.Matches(typed, m.keyMap.Quit) {
@@ -108,11 +113,30 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if keyMsg, ok := msg.(tea.KeyMsg); ok && key.Matches(keyMsg, m.keyMap.Back) && m.wizard.Step() == AuditWizardStepMode {
 			m.screen = MenuScreen
 			m.menu = NewMenuModel().SetStyles(m.styles).SetKeyMap(m.keyMap)
+			m.launchStarted = false
 			return m, nil
 		}
 
 		m.wizard, cmd = m.wizard.Update(msg)
+		if m.wizard.Step() != AuditWizardStepGenerating {
+			m.launchStarted = false
+		}
+		if m.wizard.Step() == AuditWizardStepGenerating && !m.wizard.Launched() && !m.launchStarted {
+			m.launchStarted = true
+			launchCmd := launchAuditCmd(launchRequest{
+				cwd:        m.cwd,
+				auditTypes: m.wizard.SelectedAuditTypes(),
+				agentCount: m.wizard.AgentCount(),
+				intensity:  m.wizard.Rigor().Loops,
+			})
+			if cmd == nil {
+				return m, launchCmd
+			}
+			return m, tea.Batch(cmd, launchCmd)
+		}
+
 		if m.wizard.Step() == AuditWizardStepGenerating && m.wizard.Launched() {
+			m.launchStarted = false
 			m.screen = DashboardScreen
 			return m, nil
 		}

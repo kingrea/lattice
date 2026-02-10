@@ -3,7 +3,6 @@ package tui
 import (
 	"strings"
 	"testing"
-	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -11,7 +10,7 @@ import (
 func TestAuditWizardEndToEndFlow(t *testing.T) {
 	t.Parallel()
 
-	model := NewAuditWizardModel().SetLaunchDelay(time.Millisecond)
+	model := NewAuditWizardModel()
 
 	model, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	if got := model.Step(); got != AuditWizardStepTypes {
@@ -44,7 +43,7 @@ func TestAuditWizardEndToEndFlow(t *testing.T) {
 		t.Fatal("expected generating command to be returned")
 	}
 
-	model, _ = model.Update(auditWizardLaunchMsg{})
+	model, _ = model.Update(LaunchCompleteMsg{})
 	if !model.Launched() {
 		t.Fatal("expected model launched after generation message")
 	}

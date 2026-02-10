@@ -2,7 +2,6 @@ package tui
 
 import (
 	"testing"
-	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -47,7 +46,6 @@ func TestAppRoutesLaunchCompletionToDashboard(t *testing.T) {
 	t.Parallel()
 
 	model := NewApp("/tmp/test")
-	model.wizard = model.wizard.SetLaunchDelay(time.Millisecond)
 
 	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	model = updated.(AppModel)
@@ -71,7 +69,7 @@ func TestAppRoutesLaunchCompletionToDashboard(t *testing.T) {
 		t.Fatalf("expected to still be on wizard before launch completion, got %v", got)
 	}
 
-	updated, _ = model.Update(auditWizardLaunchMsg{})
+	updated, _ = model.Update(LaunchCompleteMsg{})
 	model = updated.(AppModel)
 
 	if got := model.Screen(); got != DashboardScreen {

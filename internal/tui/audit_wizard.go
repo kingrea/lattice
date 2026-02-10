@@ -3,7 +3,6 @@ package tui
 import (
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/spinner"
@@ -38,8 +37,6 @@ type WizardRigor struct {
 	Loops int
 }
 
-type auditWizardLaunchMsg struct{}
-
 // AuditWizardModel provides a six-step configuration flow for launching audits.
 type AuditWizardModel struct {
 	styles Styles
@@ -52,9 +49,8 @@ type AuditWizardModel struct {
 	agentCursor     int
 	rigorCursor     int
 
-	spinner     spinner.Model
-	launchDelay time.Duration
-	launched    bool
+	spinner  spinner.Model
+	launched bool
 
 	validationErr string
 }
@@ -82,12 +78,11 @@ func NewAuditWizardModel() AuditWizardModel {
 	s.Spinner = spinner.Dot
 
 	m := AuditWizardModel{
-		styles:      DefaultStyles(),
-		keyMap:      DefaultKeyMap(),
-		step:        AuditWizardStepMode,
-		mode:        WizardModeManual,
-		spinner:     s,
-		launchDelay: 900 * time.Millisecond,
+		styles:  DefaultStyles(),
+		keyMap:  DefaultKeyMap(),
+		step:    AuditWizardStepMode,
+		mode:    WizardModeManual,
+		spinner: s,
 	}
 
 	m.auditTypeSelect = newAuditTypeSelect(nil)
@@ -104,12 +99,6 @@ func (m AuditWizardModel) SetStyles(styles Styles) AuditWizardModel {
 // SetKeyMap overrides shared key bindings used by the wizard.
 func (m AuditWizardModel) SetKeyMap(keyMap KeyMap) AuditWizardModel {
 	m.keyMap = keyMap
-	return m
-}
-
-// SetLaunchDelay overrides the spinner wait before reporting launch completion.
-func (m AuditWizardModel) SetLaunchDelay(delay time.Duration) AuditWizardModel {
-	m.launchDelay = delay
 	return m
 }
 
@@ -149,9 +138,17 @@ func (m AuditWizardModel) Update(msg tea.Msg) (AuditWizardModel, tea.Cmd) {
 			m.spinner, cmd = m.spinner.Update(msg)
 			return m, cmd
 		}
-	case auditWizardLaunchMsg:
+	case LaunchCompleteMsg:
 		if m.step == AuditWizardStepGenerating {
 			m.launched = true
+			m.validationErr = ""
+		}
+		return m, nil
+	case LaunchFailedMsg:
+		if m.step == AuditWizardStepGenerating {
+			m.launched = false
+			m.step = AuditWizardStepConfirm
+			m.validationErr = typed.Err.Error()
 		}
 		return m, nil
 	}
@@ -238,13 +235,9 @@ func (m AuditWizardModel) updateStepConfirm(msg tea.KeyMsg) (AuditWizardModel, t
 
 	m.step = AuditWizardStepGenerating
 	m.launched = false
+	m.validationErr = ""
 
-	return m, tea.Batch(
-		m.spinner.Tick,
-		tea.Tick(m.launchDelay, func(time.Time) tea.Msg {
-			return auditWizardLaunchMsg{}
-		}),
-	)
+	return m, m.spinner.Tick
 }
 
 func (m AuditWizardModel) selectedAuditTypeIDs() map[string]struct{} {
