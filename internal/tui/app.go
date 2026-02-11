@@ -49,7 +49,7 @@ func NewApp(cwd string) AppModel {
 	keyMap := DefaultKeyMap()
 
 	menu := NewMenuModel().SetStyles(styles).SetKeyMap(keyMap)
-	wizard := NewAuditWizardModel().SetStyles(styles).SetKeyMap(keyMap)
+	wizard := NewAuditWizardModel().SetStyles(styles).SetKeyMap(keyMap).SetProjectDir(cwd)
 
 	return AppModel{
 		cwd:       cwd,
@@ -98,7 +98,7 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.menu.Confirmed() {
 			switch m.menu.Action() {
 			case MenuActionOpenAuditWizard:
-				m.wizard = NewAuditWizardModel().SetStyles(m.styles).SetKeyMap(m.keyMap)
+				m.wizard = NewAuditWizardModel().SetStyles(m.styles).SetKeyMap(m.keyMap).SetProjectDir(m.cwd)
 				m.screen = WizardScreen
 				return m, nil
 			case MenuActionQuit:
@@ -124,6 +124,7 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				auditTypes: m.wizard.SelectedAuditTypes(),
 				agentCount: m.wizard.AgentCount(),
 				intensity:  m.wizard.Rigor().Loops,
+				focusAreas: m.wizard.DiscoveredFocusAreas(),
 			})
 			if cmd == nil {
 				return m, launchCmd

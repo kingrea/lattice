@@ -102,6 +102,41 @@ func TestGenerateSkipsUnusedInvestigatorsByAgentCount(t *testing.T) {
 	assertFileNotExists(t, filepath.Join(teamDir, ".opencode", "agents", "investigator-charlie.md"))
 }
 
+func TestGenerateUsesCustomFocusAreasWhenProvided(t *testing.T) {
+	t.Parallel()
+
+	workDir := t.TempDir()
+	teamDir, err := Generate(GenerateParams{
+		WorkingDir: workDir,
+		AuditType:  AuditTypes[0],
+		AgentCount: 1,
+		Intensity:  1,
+		Target:     "Checkout flow",
+		BeadPrefix: "perf-3",
+		FocusAreas: []string{
+			"Routing (internal/tui): Review key navigation transitions.",
+			"Templates (templates/audit): Validate prompt boundaries and output consistency.",
+			"Team Generation (internal/teams): Check rendered role/focus wiring.",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Generate() returned error: %v", err)
+	}
+
+	task, err := os.ReadFile(filepath.Join(teamDir, "context", "TASK.md"))
+	if err != nil {
+		t.Fatalf("ReadFile(context/TASK.md) returned error: %v", err)
+	}
+
+	taskText := string(task)
+	if !strings.Contains(taskText, "Routing (internal/tui)") {
+		t.Fatalf("expected custom focus area in task file, got %q", taskText)
+	}
+	if strings.Contains(taskText, "render throughput and frame stability") {
+		t.Fatalf("expected default focus areas to be replaced, got %q", taskText)
+	}
+}
+
 func TestGenerateReturnsErrorWhenRoleConfigMissing(t *testing.T) {
 	t.Parallel()
 

@@ -1,10 +1,13 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+
+	"lattice/internal/discovery"
 )
 
 func TestAuditWizardEndToEndFlow(t *testing.T) {
@@ -116,5 +119,44 @@ func TestAuditWizardAllowsEditingSelectionsAfterGoingBack(t *testing.T) {
 
 	if got := model.Step(); got != AuditWizardStepTypes {
 		t.Fatalf("expected to stay on types step after removing all selections, got %v", got)
+	}
+}
+
+func TestAuditWizardAutoModeRunsDiscoveryBeforeAuditTypes(t *testing.T) {
+	t.Parallel()
+
+	model := NewAuditWizardModel().SetProjectDir("/tmp/project").SetDiscover(func(projectDir string) (discovery.Result, error) {
+		if projectDir != "/tmp/project" {
+			return discovery.Result{}, fmt.Errorf("unexpected project dir: %s", projectDir)
+		}
+
+		return discovery.Result{Areas: []discovery.Area{
+			{Name: "Routing", Path: "internal/tui", Description: "Check navigation state transitions."},
+			{Name: "Templates", Path: "templates", Description: "Validate generated prompt consistency."},
+			{Name: "Config", Path: "internal/config", Description: "Review config persistence and state updates."},
+		}}, nil
+	})
+
+	model, _ = model.Update(tea.KeyMsg{Type: tea.KeyDown})
+	model, cmd := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if got := model.Step(); got != AuditWizardStepDiscovery {
+		t.Fatalf("expected discovery step, got %v", got)
+	}
+	if cmd == nil {
+		t.Fatal("expected discovery command")
+	}
+
+	msg := cmd()
+	model, _ = model.Update(msg)
+	if got := model.Step(); got != AuditWizardStepTypes {
+		t.Fatalf("expected types step after discovery, got %v", got)
+	}
+
+	focusAreas := model.DiscoveredFocusAreas()
+	if len(focusAreas) != 3 {
+		t.Fatalf("expected 3 discovered focus areas, got %d", len(focusAreas))
+	}
+	if !strings.Contains(focusAreas[0], "Routing") {
+		t.Fatalf("expected rendered focus area details, got %q", focusAreas[0])
 	}
 }

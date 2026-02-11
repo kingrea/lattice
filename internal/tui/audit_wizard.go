@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 
+	"lattice/internal/discovery"
 	"lattice/internal/teams"
 )
 
@@ -16,6 +17,7 @@ type AuditWizardStep int
 
 const (
 	AuditWizardStepMode AuditWizardStep = iota
+	AuditWizardStepDiscovery
 	AuditWizardStepTypes
 	AuditWizardStepAgentCount
 	AuditWizardStepRigor
@@ -42,17 +44,27 @@ type AuditWizardModel struct {
 	styles Styles
 	keyMap KeyMap
 
-	step            AuditWizardStep
-	modeCursor      int
-	mode            WizardMode
-	auditTypeSelect MultiSelectModel[teams.AuditType]
-	agentCursor     int
-	rigorCursor     int
+	step                  AuditWizardStep
+	projectDir            string
+	discover              func(projectDir string) (discovery.Result, error)
+	modeCursor            int
+	mode                  WizardMode
+	auditTypeSelect       MultiSelectModel[teams.AuditType]
+	agentCursor           int
+	rigorCursor           int
+	discoveryAreas        []discovery.Area
+	discoveryRunning      bool
+	discoveryUsedFallback bool
 
 	spinner  spinner.Model
 	launched bool
 
 	validationErr string
+}
+
+type discoveryFinishedMsg struct {
+	result discovery.Result
+	err    error
 }
 
 var wizardModeOptions = []struct {
@@ -78,11 +90,13 @@ func NewAuditWizardModel() AuditWizardModel {
 	s.Spinner = spinner.Dot
 
 	m := AuditWizardModel{
-		styles:  DefaultStyles(),
-		keyMap:  DefaultKeyMap(),
-		step:    AuditWizardStepMode,
-		mode:    WizardModeManual,
-		spinner: s,
+		styles:     DefaultStyles(),
+		keyMap:     DefaultKeyMap(),
+		step:       AuditWizardStepMode,
+		projectDir: ".",
+		discover:   discovery.Discover,
+		mode:       WizardModeManual,
+		spinner:    s,
 	}
 
 	m.auditTypeSelect = newAuditTypeSelect(nil)
@@ -102,6 +116,18 @@ func (m AuditWizardModel) SetKeyMap(keyMap KeyMap) AuditWizardModel {
 	return m
 }
 
+// SetProjectDir sets the target directory for discovery.
+func (m AuditWizardModel) SetProjectDir(projectDir string) AuditWizardModel {
+	m.projectDir = projectDir
+	return m
+}
+
+// SetDiscover overrides discovery execution, primarily for tests.
+func (m AuditWizardModel) SetDiscover(discoverFn func(projectDir string) (discovery.Result, error)) AuditWizardModel {
+	m.discover = discoverFn
+	return m
+}
+
 // Update handles key input and timer messages.
 func (m AuditWizardModel) Update(msg tea.Msg) (AuditWizardModel, tea.Cmd) {
 	switch typed := msg.(type) {
@@ -109,8 +135,20 @@ func (m AuditWizardModel) Update(msg tea.Msg) (AuditWizardModel, tea.Cmd) {
 		if key.Matches(typed, m.keyMap.Back) {
 			m.validationErr = ""
 			if m.step > AuditWizardStepMode {
-				m.step--
+				switch m.step {
+				case AuditWizardStepTypes:
+					if m.mode == WizardModeAutoGenerate {
+						m.step = AuditWizardStepDiscovery
+					} else {
+						m.step = AuditWizardStepMode
+					}
+				case AuditWizardStepDiscovery:
+					m.step = AuditWizardStepMode
+				default:
+					m.step--
+				}
 				m.launched = false
+				m.discoveryRunning = false
 			}
 			return m, nil
 		}
@@ -118,10 +156,15 @@ func (m AuditWizardModel) Update(msg tea.Msg) (AuditWizardModel, tea.Cmd) {
 		if m.step == AuditWizardStepGenerating {
 			return m, nil
 		}
+		if m.step == AuditWizardStepDiscovery && m.discoveryRunning {
+			return m, nil
+		}
 
 		switch m.step {
 		case AuditWizardStepMode:
 			return m.updateStepMode(typed)
+		case AuditWizardStepDiscovery:
+			return m, nil
 		case AuditWizardStepTypes:
 			return m.updateStepTypes(typed)
 		case AuditWizardStepAgentCount:
@@ -133,11 +176,26 @@ func (m AuditWizardModel) Update(msg tea.Msg) (AuditWizardModel, tea.Cmd) {
 		}
 
 	case spinner.TickMsg:
-		if m.step == AuditWizardStepGenerating && !m.launched {
+		if (m.step == AuditWizardStepGenerating && !m.launched) || (m.step == AuditWizardStepDiscovery && m.discoveryRunning) {
 			var cmd tea.Cmd
 			m.spinner, cmd = m.spinner.Update(msg)
 			return m, cmd
 		}
+	case discoveryFinishedMsg:
+		if m.step == AuditWizardStepDiscovery {
+			m.discoveryRunning = false
+			if typed.err != nil {
+				m.validationErr = typed.err.Error()
+				m.step = AuditWizardStepMode
+				return m, nil
+			}
+
+			m.discoveryAreas = typed.result.Areas
+			m.discoveryUsedFallback = typed.result.UsedFallback
+			m.validationErr = ""
+			m.step = AuditWizardStepTypes
+		}
+		return m, nil
 	case LaunchCompleteMsg:
 		if m.step == AuditWizardStepGenerating {
 			m.launched = true
@@ -168,10 +226,27 @@ func (m AuditWizardModel) updateStepMode(msg tea.KeyMsg) (AuditWizardModel, tea.
 		m.modeCursor = (m.modeCursor + 1) % len(wizardModeOptions)
 	case key.Matches(msg, m.keyMap.Select):
 		m.mode = wizardModeOptions[m.modeCursor].mode
+		if m.mode == WizardModeAutoGenerate {
+			m.step = AuditWizardStepDiscovery
+			m.discoveryRunning = true
+			m.discoveryAreas = nil
+			m.discoveryUsedFallback = false
+			m.validationErr = ""
+			return m, m.discoveryCmd()
+		}
 		m.step = AuditWizardStepTypes
 	}
 
 	return m, nil
+}
+
+func (m AuditWizardModel) discoveryCmd() tea.Cmd {
+	projectDir := m.projectDir
+	discoverFn := m.discover
+	return func() tea.Msg {
+		result, err := discoverFn(projectDir)
+		return discoveryFinishedMsg{result: result, err: err}
+	}
 }
 
 func (m AuditWizardModel) updateStepTypes(msg tea.KeyMsg) (AuditWizardModel, tea.Cmd) {
@@ -260,6 +335,8 @@ func (m AuditWizardModel) View() string {
 	switch m.step {
 	case AuditWizardStepMode:
 		lines = append(lines, m.viewModeStep()...)
+	case AuditWizardStepDiscovery:
+		lines = append(lines, m.viewDiscoveryStep()...)
 	case AuditWizardStepTypes:
 		lines = append(lines, m.viewTypesStep()...)
 	case AuditWizardStepAgentCount:
@@ -301,6 +378,14 @@ func (m AuditWizardModel) viewModeStep() []string {
 	}
 
 	return lines
+}
+
+func (m AuditWizardModel) viewDiscoveryStep() []string {
+	if m.discoveryRunning {
+		return []string{m.styles.Body.Render(fmt.Sprintf("%s Discovering auditable areas...", m.spinner.View()))}
+	}
+
+	return []string{m.styles.Success.Render("Discovery complete.")}
 }
 
 func (m AuditWizardModel) viewTypesStep() []string {
@@ -352,10 +437,19 @@ func (m AuditWizardModel) viewConfirmStep() []string {
 		typeNames = append(typeNames, auditType.Name)
 	}
 
+	discoveryStatus := "n/a"
+	if m.mode == WizardModeAutoGenerate {
+		discoveryStatus = "opencode"
+		if m.discoveryUsedFallback {
+			discoveryStatus = "fallback"
+		}
+	}
+
 	return []string{
 		"Confirm launch settings:",
 		m.styles.ListItem.Render(fmt.Sprintf("Mode: %s", m.Mode().String())),
 		m.styles.ListItem.Render(fmt.Sprintf("Audit types: %s", strings.Join(typeNames, ", "))),
+		m.styles.ListItem.Render(fmt.Sprintf("Discovery areas: %d (%s)", len(m.discoveryAreas), discoveryStatus)),
 		m.styles.ListItem.Render(fmt.Sprintf("Investigators: %d", m.AgentCount())),
 		m.styles.ListItem.Render(fmt.Sprintf("Rigor: %s (%d loop%s)", m.Rigor().Label, m.Rigor().Loops, pluralSuffix(m.Rigor().Loops))),
 	}
@@ -376,6 +470,9 @@ func (m AuditWizardModel) helpText() string {
 	if m.step == AuditWizardStepTypes {
 		return "esc: back • ↑/k: up • ↓/j: down • space: toggle • a: select all • enter: continue"
 	}
+	if m.step == AuditWizardStepDiscovery {
+		return "esc: back • analyzing project structure"
+	}
 
 	return "esc: back • ↑/k: up • ↓/j: down • enter: continue"
 }
@@ -383,17 +480,19 @@ func (m AuditWizardModel) helpText() string {
 func (m AuditWizardModel) stepLabel() string {
 	switch m.step {
 	case AuditWizardStepMode:
-		return "Step 0/5: Mode"
+		return "Step 0/6: Mode"
+	case AuditWizardStepDiscovery:
+		return "Step 1/6: Discovery"
 	case AuditWizardStepTypes:
-		return "Step 1/5: Audit Types"
+		return "Step 2/6: Audit Types"
 	case AuditWizardStepAgentCount:
-		return "Step 2/5: Agent Count"
+		return "Step 3/6: Agent Count"
 	case AuditWizardStepRigor:
-		return "Step 3/5: Rigor"
+		return "Step 4/6: Rigor"
 	case AuditWizardStepConfirm:
-		return "Step 4/5: Confirm"
+		return "Step 5/6: Confirm"
 	case AuditWizardStepGenerating:
-		return "Step 5/5: Generating"
+		return "Step 6/6: Generating"
 	default:
 		return "Audit Wizard"
 	}
@@ -456,6 +555,20 @@ func (m AuditWizardModel) Step() AuditWizardStep {
 // Launched reports whether generation completed and launch can proceed.
 func (m AuditWizardModel) Launched() bool {
 	return m.launched
+}
+
+// DiscoveredFocusAreas returns discovered area summaries for audit context.
+func (m AuditWizardModel) DiscoveredFocusAreas() []string {
+	if m.mode != WizardModeAutoGenerate || len(m.discoveryAreas) == 0 {
+		return nil
+	}
+
+	focus := make([]string, 0, len(m.discoveryAreas))
+	for _, area := range m.discoveryAreas {
+		focus = append(focus, fmt.Sprintf("%s (%s): %s", area.Name, area.Path, area.Description))
+	}
+
+	return focus
 }
 
 // String renders wizard modes for summary output.

@@ -49,6 +49,7 @@ type GenerateParams struct {
 	Intensity  int
 	Target     string
 	BeadPrefix string
+	FocusAreas []string
 }
 
 // Generate creates .lattice/teams/audit-{type}/ from embedded templates.
@@ -84,13 +85,18 @@ func Generate(params GenerateParams) (string, error) {
 		return "", fmt.Errorf("create team directory: %w", err)
 	}
 
+	focusAreas := params.AuditType.FocusAreas
+	if len(params.FocusAreas) > 0 {
+		focusAreas = append([]string(nil), params.FocusAreas...)
+	}
+
 	data := TemplateData{
 		TeamName:   teamName,
 		Intensity:  params.Intensity,
 		BeadPrefix: strings.TrimSpace(params.BeadPrefix),
 		Target:     params.Target,
 		Roles:      roles,
-		FocusAreas: params.AuditType.FocusAreas,
+		FocusAreas: focusAreas,
 	}
 
 	if err := fs.WalkDir(templates.AuditTemplate, auditTemplateRoot, func(path string, entry fs.DirEntry, walkErr error) error {

@@ -26,6 +26,7 @@ type launchRequest struct {
 	auditTypes []teams.AuditType
 	agentCount int
 	intensity  int
+	focusAreas []string
 }
 
 type launchTmuxManager interface {
@@ -105,6 +106,7 @@ func launchAudit(req launchRequest, deps launchDeps) tea.Msg {
 			Intensity:  req.intensity,
 			Target:     filepath.Base(req.cwd),
 			BeadPrefix: prefix,
+			FocusAreas: req.focusAreas,
 		})
 		if err != nil {
 			return LaunchFailedMsg{Err: fmt.Errorf("generate team folder for %s: %w", auditType.ID, err)}
