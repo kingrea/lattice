@@ -15,8 +15,9 @@ import (
 )
 
 const (
-	auditTemplateRoot = "audit"
-	templateExt       = ".tmpl"
+	auditTemplateRoot       = "audit"
+	roleSessionTemplateRoot = "role-session"
+	templateExt             = ".tmpl"
 )
 
 // Role is template-friendly role data for one active investigator.
@@ -50,6 +51,34 @@ type GenerateParams struct {
 	Target     string
 	BeadPrefix string
 	FocusAreas []string
+}
+
+// RoleSessionParams defines required inputs to generate a single-role session folder.
+type RoleSessionParams struct {
+	Cwd          string
+	EpicBeadID   string
+	RoleBeadID   string
+	RoleTitle    string
+	RoleGuidance string
+	Intensity    int
+	BeadPrefix   string
+	Target       string
+	FocusAreas   []string
+	AuditTypeID  string
+	CodeName     string
+}
+
+// RoleSessionData contains values rendered into role-session templates.
+type RoleSessionData struct {
+	TeamName     string
+	EpicBeadID   string
+	RoleBeadID   string
+	RoleTitle    string
+	RoleGuidance string
+	Intensity    int
+	BeadPrefix   string
+	Target       string
+	FocusAreas   []string
 }
 
 // Generate creates .lattice/teams/audit-{type}/ from embedded templates.
@@ -139,6 +168,79 @@ func Generate(params GenerateParams) (string, error) {
 	return teamDir, nil
 }
 
+// GenerateRoleSession creates .lattice/teams/{auditTypeID}-{codeName}/ from embedded templates.
+func GenerateRoleSession(params RoleSessionParams) (string, error) {
+	if strings.TrimSpace(params.Cwd) == "" {
+		return "", fmt.Errorf("cwd must not be empty")
+	}
+	if strings.TrimSpace(params.AuditTypeID) == "" {
+		return "", fmt.Errorf("audit type id must not be empty")
+	}
+	if strings.TrimSpace(params.CodeName) == "" {
+		return "", fmt.Errorf("code name must not be empty")
+	}
+	if params.Intensity < 1 {
+		return "", fmt.Errorf("intensity must be at least 1")
+	}
+	if strings.TrimSpace(params.BeadPrefix) == "" {
+		return "", fmt.Errorf("bead prefix must not be empty")
+	}
+
+	teamName := strings.TrimSpace(params.AuditTypeID) + "-" + strings.TrimSpace(params.CodeName)
+	teamDir := filepath.Join(params.Cwd, config.DirName, "teams", teamName)
+
+	if err := os.RemoveAll(teamDir); err != nil {
+		return "", fmt.Errorf("reset team directory: %w", err)
+	}
+	if err := os.MkdirAll(teamDir, 0o755); err != nil {
+		return "", fmt.Errorf("create team directory: %w", err)
+	}
+
+	data := RoleSessionData{
+		TeamName:     teamName,
+		EpicBeadID:   strings.TrimSpace(params.EpicBeadID),
+		RoleBeadID:   strings.TrimSpace(params.RoleBeadID),
+		RoleTitle:    strings.TrimSpace(params.RoleTitle),
+		RoleGuidance: strings.TrimSpace(params.RoleGuidance),
+		Intensity:    params.Intensity,
+		BeadPrefix:   strings.TrimSpace(params.BeadPrefix),
+		Target:       params.Target,
+		FocusAreas:   append([]string(nil), params.FocusAreas...),
+	}
+
+	if err := fs.WalkDir(templates.RoleSessionTemplate, roleSessionTemplateRoot, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if path == roleSessionTemplateRoot {
+			return nil
+		}
+
+		relPath, err := filepath.Rel(roleSessionTemplateRoot, path)
+		if err != nil {
+			return fmt.Errorf("compute relative path for %q: %w", path, err)
+		}
+		relPath = filepath.ToSlash(relPath)
+
+		outputRel := strings.TrimSuffix(relPath, templateExt)
+		outputPath := filepath.Join(teamDir, filepath.FromSlash(outputRel))
+
+		if entry.IsDir() {
+			return os.MkdirAll(outputPath, 0o755)
+		}
+
+		if strings.HasSuffix(relPath, templateExt) {
+			return renderRoleSessionTemplateFile(path, outputPath, data)
+		}
+
+		return copyRoleSessionStaticFile(path, outputPath)
+	}); err != nil {
+		return "", fmt.Errorf("generate role session files: %w", err)
+	}
+
+	return teamDir, nil
+}
+
 func activeRoles(auditType AuditType, agentCount int) ([]Role, error) {
 	for _, roleConfig := range auditType.RoleConfigs {
 		if roleConfig.AgentCount != agentCount {
@@ -200,6 +302,57 @@ func renderTemplateFile(srcPath, dstPath string, data TemplateData) error {
 
 func copyStaticFile(srcPath, dstPath string) error {
 	src, err := templates.AuditTemplate.Open(srcPath)
+	if err != nil {
+		return fmt.Errorf("open embedded file %q: %w", srcPath, err)
+	}
+	defer src.Close()
+
+	if err := os.MkdirAll(filepath.Dir(dstPath), 0o755); err != nil {
+		return fmt.Errorf("create directory for %q: %w", dstPath, err)
+	}
+
+	dst, err := os.Create(dstPath)
+	if err != nil {
+		return fmt.Errorf("create file %q: %w", dstPath, err)
+	}
+	defer dst.Close()
+
+	if _, err := io.Copy(dst, src); err != nil {
+		return fmt.Errorf("copy static file %q: %w", srcPath, err)
+	}
+
+	return nil
+}
+
+func renderRoleSessionTemplateFile(srcPath, dstPath string, data RoleSessionData) error {
+	src, err := fs.ReadFile(templates.RoleSessionTemplate, srcPath)
+	if err != nil {
+		return fmt.Errorf("read template %q: %w", srcPath, err)
+	}
+
+	tmpl, err := template.New(srcPath).Parse(string(src))
+	if err != nil {
+		return fmt.Errorf("parse template %q: %w", srcPath, err)
+	}
+
+	if err := os.MkdirAll(filepath.Dir(dstPath), 0o755); err != nil {
+		return fmt.Errorf("create directory for %q: %w", dstPath, err)
+	}
+
+	var out bytes.Buffer
+	if err := tmpl.Execute(&out, data); err != nil {
+		return fmt.Errorf("execute template %q: %w", srcPath, err)
+	}
+
+	if err := os.WriteFile(dstPath, out.Bytes(), 0o644); err != nil {
+		return fmt.Errorf("write rendered file %q: %w", dstPath, err)
+	}
+
+	return nil
+}
+
+func copyRoleSessionStaticFile(srcPath, dstPath string) error {
+	src, err := templates.RoleSessionTemplate.Open(srcPath)
 	if err != nil {
 		return fmt.Errorf("open embedded file %q: %w", srcPath, err)
 	}

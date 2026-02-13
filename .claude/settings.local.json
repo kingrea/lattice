@@ -5,7 +5,15 @@
       "Bash(opencode agent:*)",
       "Bash(opencode serve:*)",
       "Bash(bd prime:*)",
-      "Bash(wsl bash:*)"
+      "Bash(wsl bash:*)",
+      "Bash(wsl tmux:*)",
+      "Bash(go test:*)",
+      "Bash(go build:*)",
+      "Bash(dir:*)",
+      "Bash(bd list:*)",
+      "Bash(wsl -e bash -c \"cd /mnt/g/Node-Websites/ai && bd list:*)",
+      "Bash(wsl -e bash -c \"export PATH=\"\"/home/kingrea/.local/bin:$PATH\"\" && cd /mnt/g/Node-Websites/ai && bd list 2>&1\")",
+      "Bash(wsl -e bash -c:*)"
     ]
   }
 }

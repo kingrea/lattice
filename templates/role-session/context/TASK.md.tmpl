@@ -1,0 +1,32 @@
+# Role Session Task
+
+This project uses beads for issue tracking.
+
+## Epic Reference
+
+- Epic bead: `{{ .EpicBeadID }}`
+- Role bead: `{{ .RoleBeadID }}`
+
+## Role
+
+- Title: {{ .RoleTitle }}
+- Guidance: {{ .RoleGuidance }}
+
+## Bead Prefix
+
+Use `{{ .BeadPrefix }}` for any issues opened from this session.
+
+## Target
+
+{{ .Target }}
+
+## Focus Areas
+
+{{- range .FocusAreas }}
+- {{ . }}
+{{- end }}
+
+## Rules
+- Only raise issues that have real impact. Do not manufacture problems.
+- If an existing bead already covers a finding, update it - do not create a duplicate.
+- If there are no issues, say so. An empty audit is a valid outcome.

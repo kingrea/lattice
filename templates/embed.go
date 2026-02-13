@@ -6,3 +6,8 @@ import "embed"
 //
 //go:embed all:audit
 var AuditTemplate embed.FS
+
+// RoleSessionTemplate contains the embedded single-role session template tree.
+//
+//go:embed all:role-session
+var RoleSessionTemplate embed.FS

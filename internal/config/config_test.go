@@ -27,6 +27,12 @@ func TestInitCreatesConfigWithDefaults(t *testing.T) {
 	if cfg.Teams == nil {
 		t.Fatal("expected Teams map to be initialized")
 	}
+	if cfg.Epics == nil {
+		t.Fatal("expected Epics map to be initialized")
+	}
+	if cfg.Roles == nil {
+		t.Fatal("expected Roles map to be initialized")
+	}
 	if cfg.Session.WorkingDir != tmp {
 		t.Fatalf("expected Session.WorkingDir=%q, got %q", tmp, cfg.Session.WorkingDir)
 	}
@@ -109,6 +115,169 @@ func TestLoadSaveRoundTrip(t *testing.T) {
 	}
 	if !reflect.DeepEqual(loaded.Teams, cfg.Teams) {
 		t.Fatalf("team state mismatch after round trip: got %+v want %+v", loaded.Teams, cfg.Teams)
+	}
+}
+
+func TestLoadSaveRoundTripWithEpicsAndRoles(t *testing.T) {
+	t.Parallel()
+
+	tmp := t.TempDir()
+	cfg, err := Init(tmp)
+	if err != nil {
+		t.Fatalf("Init() returned error: %v", err)
+	}
+
+	cfg.Epics["ai-nl5"] = EpicState{
+		BeadID:     "ai-nl5",
+		AuditType:  "nlp",
+		AuditName:  "narrative-audit",
+		AgentCount: 3,
+		Intensity:  2,
+		Status:     "in_progress",
+	}
+	cfg.Roles["scribe"] = RoleState{
+		BeadID:     "ai-nl6",
+		EpicBeadID: "ai-nl5",
+		CodeName:   "scribe",
+		Title:      "Session Scribe",
+		Guidance:   "Capture findings and decisions.",
+		BeadPrefix: "ai-nl",
+		Order:      1,
+		Status:     "ready",
+		TmuxWindow: "nl5-scribe",
+		Intensity:  1,
+	}
+
+	if err := cfg.Save(); err != nil {
+		t.Fatalf("Save() returned error: %v", err)
+	}
+
+	loaded, err := Load(tmp)
+	if err != nil {
+		t.Fatalf("Load() returned error: %v", err)
+	}
+
+	if !reflect.DeepEqual(loaded.Epics, cfg.Epics) {
+		t.Fatalf("epic state mismatch after round trip: got %+v want %+v", loaded.Epics, cfg.Epics)
+	}
+	if !reflect.DeepEqual(loaded.Roles, cfg.Roles) {
+		t.Fatalf("role state mismatch after round trip: got %+v want %+v", loaded.Roles, cfg.Roles)
+	}
+}
+
+func TestLoadBackwardCompatibilityWithoutEpicsAndRoles(t *testing.T) {
+	t.Parallel()
+
+	tmp := t.TempDir()
+	configDir := filepath.Join(tmp, DirName)
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll() returned error: %v", err)
+	}
+
+	legacyConfig := `bead_counter = 2
+
+[session]
+name = "legacy-session"
+created_at = "2026-02-12T00:00:00Z"
+working_dir = "/tmp/legacy"
+
+[teams.alpha]
+id = "alpha"
+type = "legacy"
+prefix = "legacy-2"
+agent_count = 1
+intensity = 1
+status = "idle"
+tmux_window = "alpha"
+`
+
+	configPath := filepath.Join(configDir, ConfigFileName)
+	if err := os.WriteFile(configPath, []byte(legacyConfig), 0o644); err != nil {
+		t.Fatalf("WriteFile() returned error: %v", err)
+	}
+
+	loaded, err := Load(tmp)
+	if err != nil {
+		t.Fatalf("Load() returned error: %v", err)
+	}
+
+	if loaded.Epics == nil {
+		t.Fatal("expected Epics to be initialized")
+	}
+	if loaded.Roles == nil {
+		t.Fatal("expected Roles to be initialized")
+	}
+	if len(loaded.Epics) != 0 {
+		t.Fatalf("expected Epics to be empty, got %d entries", len(loaded.Epics))
+	}
+	if len(loaded.Roles) != 0 {
+		t.Fatalf("expected Roles to be empty, got %d entries", len(loaded.Roles))
+	}
+}
+
+func TestSaveAtomicWriteCleansTempFile(t *testing.T) {
+	t.Parallel()
+
+	tmp := t.TempDir()
+	cfg, err := Init(tmp)
+	if err != nil {
+		t.Fatalf("Init() returned error: %v", err)
+	}
+
+	cfg.BeadCounter = 9
+	if err := cfg.Save(); err != nil {
+		t.Fatalf("Save() returned error: %v", err)
+	}
+
+	tmpPath := filepath.Join(tmp, DirName, ConfigFileName+".tmp")
+	if _, err := os.Stat(tmpPath); !os.IsNotExist(err) {
+		t.Fatalf("expected temp file to be removed, stat err: %v", err)
+	}
+}
+
+func TestNilMapGuardsOnSaveAndLoad(t *testing.T) {
+	t.Parallel()
+
+	tmp := t.TempDir()
+	configDir := filepath.Join(tmp, DirName)
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll() returned error: %v", err)
+	}
+
+	cfg := &Config{
+		Session: SessionMetadata{
+			Name:       "nil-map-guard",
+			CreatedAt:  "2026-02-13T00:00:00Z",
+			WorkingDir: tmp,
+		},
+		filePath: filepath.Join(configDir, ConfigFileName),
+	}
+
+	if err := cfg.Save(); err != nil {
+		t.Fatalf("Save() returned error: %v", err)
+	}
+	if cfg.Teams == nil {
+		t.Fatal("expected Teams map to be initialized after Save")
+	}
+	if cfg.Epics == nil {
+		t.Fatal("expected Epics map to be initialized after Save")
+	}
+	if cfg.Roles == nil {
+		t.Fatal("expected Roles map to be initialized after Save")
+	}
+
+	loaded, err := Load(tmp)
+	if err != nil {
+		t.Fatalf("Load() returned error: %v", err)
+	}
+	if loaded.Teams == nil {
+		t.Fatal("expected Teams map to be initialized after Load")
+	}
+	if loaded.Epics == nil {
+		t.Fatal("expected Epics map to be initialized after Load")
+	}
+	if loaded.Roles == nil {
+		t.Fatal("expected Roles map to be initialized after Load")
 	}
 }
 

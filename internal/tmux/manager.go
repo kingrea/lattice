@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	pathpkg "path"
+	"runtime"
 	"strconv"
 	"strings"
 )
@@ -24,13 +25,13 @@ type WindowInfo struct {
 	Active bool
 }
 
-// Manager wraps WSL-based tmux operations.
+// Manager wraps tmux operations, using WSL on Windows or native tmux on Linux.
 type Manager struct {
 	runCommand            runCommand
 	runInteractiveCommand runInteractiveCommand
 }
 
-// NewManager creates a manager and verifies tmux is available in WSL.
+// NewManager creates a manager and verifies tmux is available.
 func NewManager() (*Manager, error) {
 	m := &Manager{
 		runCommand:            defaultRunCommand,
@@ -184,15 +185,30 @@ func (m *Manager) ListWindows(session string) ([]WindowInfo, error) {
 
 func (m *Manager) ensureAvailable(ctx context.Context) error {
 	if _, err := m.runCommand(ctx, "-V"); err != nil {
-		return fmt.Errorf("tmux is not available in WSL: %w", err)
+		return fmt.Errorf("tmux is not available: %w", err)
 	}
 
 	return nil
 }
 
+// tmuxCommand returns the executable and arguments for running tmux.
+// On Windows it shells out via WSL; on Linux/macOS it calls tmux directly.
+func tmuxCommand(args ...string) (string, []string) {
+	if runtime.GOOS == "windows" {
+		return "wsl", append([]string{"tmux"}, args...)
+	}
+	return "tmux", args
+}
+
+// Command builds an exec.Cmd for tmux with OS-appropriate invocation.
+func Command(args ...string) *exec.Cmd {
+	name, cmdArgs := tmuxCommand(args...)
+	return exec.Command(name, cmdArgs...)
+}
+
 func defaultRunCommand(ctx context.Context, args ...string) (string, error) {
-	tmuxArgs := append([]string{"tmux"}, args...)
-	cmd := exec.CommandContext(ctx, "wsl", tmuxArgs...)
+	name, cmdArgs := tmuxCommand(args...)
+	cmd := exec.CommandContext(ctx, name, cmdArgs...)
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
@@ -207,14 +223,14 @@ func defaultRunCommand(ctx context.Context, args ...string) (string, error) {
 }
 
 func defaultRunInteractiveCommand(ctx context.Context, args ...string) error {
-	tmuxArgs := append([]string{"tmux"}, args...)
-	cmd := exec.CommandContext(ctx, "wsl", tmuxArgs...)
+	name, cmdArgs := tmuxCommand(args...)
+	cmd := exec.CommandContext(ctx, name, cmdArgs...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("run wsl tmux %s: %w", strings.Join(args, " "), err)
+		return fmt.Errorf("run tmux %s: %w", strings.Join(args, " "), err)
 	}
 
 	return nil
@@ -229,7 +245,8 @@ func wrapExecError(err error, stderr string) error {
 	return fmt.Errorf("%w: %s", err, stderr)
 }
 
-// TranslateToWSLPath converts Windows style paths for WSL tmux commands.
+// TranslateToWSLPath converts Windows style paths to WSL-compatible form.
+// Unix-style paths are returned cleaned unchanged.
 func TranslateToWSLPath(windowsPath string) (string, error) {
 	trimmed := strings.TrimSpace(windowsPath)
 	if trimmed == "" {

@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"path/filepath"
+
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -121,6 +123,7 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.launchStarted = true
 			launchCmd := launchAuditCmd(launchRequest{
 				cwd:        m.cwd,
+				target:     filepath.Base(m.cwd),
 				auditTypes: m.wizard.SelectedAuditTypes(),
 				agentCount: m.wizard.AgentCount(),
 				intensity:  m.wizard.Rigor().Loops,

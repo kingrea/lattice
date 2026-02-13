@@ -160,6 +160,90 @@ func TestGenerateReturnsErrorWhenRoleConfigMissing(t *testing.T) {
 	}
 }
 
+func TestGenerateRoleSessionCreatesRenderedFolder(t *testing.T) {
+	t.Parallel()
+
+	workDir := t.TempDir()
+	teamDir, err := GenerateRoleSession(RoleSessionParams{
+		Cwd:          workDir,
+		EpicBeadID:   "epic-120",
+		RoleBeadID:   "perf-121",
+		RoleTitle:    "Lead Performance Auditor",
+		RoleGuidance: "Prioritize regressions with user-visible latency impact.",
+		Intensity:    3,
+		BeadPrefix:   "perf-121",
+		Target:       "Checkout rendering and payment handoff",
+		FocusAreas: []string{
+			"Client-side rendering and hydration behavior",
+			"Payment gateway request/response timing",
+		},
+		AuditTypeID: "perf",
+		CodeName:    "alpha",
+	})
+	if err != nil {
+		t.Fatalf("GenerateRoleSession() returned error: %v", err)
+	}
+
+	wantTeamDir := filepath.Join(workDir, config.DirName, "teams", "perf-alpha")
+	if teamDir != wantTeamDir {
+		t.Fatalf("unexpected team directory: got %q want %q", teamDir, wantTeamDir)
+	}
+
+	assertFileExists(t, filepath.Join(teamDir, ".opencode", "agents", "auditor.md"))
+	assertFileExists(t, filepath.Join(teamDir, ".opencode", "agents", "scribe.md"))
+	assertFileNotExists(t, filepath.Join(teamDir, ".opencode", "agents", "commissar.md"))
+	assertFileNotExists(t, filepath.Join(teamDir, ".opencode", "agents", "investigator-alpha.md"))
+	assertFileNotExists(t, filepath.Join(teamDir, ".opencode", "agents", "investigator-bravo.md"))
+	assertFileNotExists(t, filepath.Join(teamDir, ".opencode", "agents", "investigator-charlie.md"))
+
+	teamFile, err := os.ReadFile(filepath.Join(teamDir, ".team"))
+	if err != nil {
+		t.Fatalf("ReadFile(.team) returned error: %v", err)
+	}
+	teamText := string(teamFile)
+	if !strings.Contains(teamText, "team=perf-alpha") {
+		t.Fatalf("expected .team to include generated team name, got %q", teamText)
+	}
+	if !strings.Contains(teamText, "epic_bead_id=epic-120") {
+		t.Fatalf("expected .team to include epic bead id, got %q", teamText)
+	}
+	if !strings.Contains(teamText, "role_bead_id=perf-121") {
+		t.Fatalf("expected .team to include role bead id, got %q", teamText)
+	}
+	if !strings.Contains(teamText, "role=Lead Performance Auditor") {
+		t.Fatalf("expected .team to include role title, got %q", teamText)
+	}
+	if !strings.Contains(teamText, "intensity=3") {
+		t.Fatalf("expected .team to include intensity, got %q", teamText)
+	}
+
+	instructions, err := os.ReadFile(filepath.Join(teamDir, "INSTRUCTIONS.md"))
+	if err != nil {
+		t.Fatalf("ReadFile(INSTRUCTIONS.md) returned error: %v", err)
+	}
+	if !strings.Contains(string(instructions), "Use the role bead prefix `perf-121`") {
+		t.Fatalf("expected instructions to include rendered bead prefix")
+	}
+
+	task, err := os.ReadFile(filepath.Join(teamDir, "context", "TASK.md"))
+	if err != nil {
+		t.Fatalf("ReadFile(context/TASK.md) returned error: %v", err)
+	}
+	taskText := string(task)
+	if !strings.Contains(taskText, "- Title: Lead Performance Auditor") {
+		t.Fatalf("expected task to include role perspective, got %q", taskText)
+	}
+	if !strings.Contains(taskText, "- Guidance: Prioritize regressions with user-visible latency impact.") {
+		t.Fatalf("expected task to include role guidance, got %q", taskText)
+	}
+	if !strings.Contains(taskText, "- Client-side rendering and hydration behavior") {
+		t.Fatalf("expected task to include first focus area, got %q", taskText)
+	}
+	if !strings.Contains(taskText, "- Payment gateway request/response timing") {
+		t.Fatalf("expected task to include second focus area, got %q", taskText)
+	}
+}
+
 func assertFileExists(t *testing.T, path string) {
 	t.Helper()
 

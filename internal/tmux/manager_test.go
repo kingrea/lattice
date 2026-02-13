@@ -90,7 +90,7 @@ func TestEnsureAvailableReturnsFriendlyError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	if !strings.Contains(err.Error(), "tmux is not available in WSL") {
+	if !strings.Contains(err.Error(), "tmux is not available") {
 		t.Fatalf("expected friendly availability message, got: %v", err)
 	}
 }

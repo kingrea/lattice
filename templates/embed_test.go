@@ -66,10 +66,80 @@ func TestAuditTemplateFilesRenderWithTestData(t *testing.T) {
 	assertRenderedContains(t, "audit/context/TASK.md.tmpl", data, "- network waterfalls")
 }
 
+func TestRoleSessionTemplateReadDirIncludesDotfiles(t *testing.T) {
+	t.Parallel()
+
+	entries, err := fs.ReadDir(RoleSessionTemplate, "role-session")
+	if err != nil {
+		t.Fatalf("ReadDir role-session: %v", err)
+	}
+
+	if !hasEntry(entries, ".opencode") {
+		t.Fatalf("expected .opencode directory in embedded template")
+	}
+
+	if !hasEntry(entries, ".team.tmpl") {
+		t.Fatalf("expected .team.tmpl file in embedded template")
+	}
+}
+
+func TestRoleSessionTemplateIncludesStaticAgentAndSkillFiles(t *testing.T) {
+	t.Parallel()
+
+	if _, err := fs.ReadFile(RoleSessionTemplate, "role-session/.opencode/agents/auditor.md"); err != nil {
+		t.Fatalf("missing static agent file: %v", err)
+	}
+
+	if _, err := fs.ReadFile(RoleSessionTemplate, "role-session/.opencode/skills/compile-report/SKILL.md"); err != nil {
+		t.Fatalf("missing static skill file: %v", err)
+	}
+}
+
+func TestRoleSessionTemplateFilesRenderWithTestData(t *testing.T) {
+	t.Parallel()
+
+	type testData struct {
+		TeamName     string
+		EpicBeadID   string
+		RoleBeadID   string
+		RoleTitle    string
+		RoleGuidance string
+		Intensity    int
+		BeadPrefix   string
+		Target       string
+		FocusAreas   []string
+	}
+
+	data := testData{
+		TeamName:     "audit-role-security",
+		EpicBeadID:   "epic-101",
+		RoleBeadID:   "security-202",
+		RoleTitle:    "Security specialist",
+		RoleGuidance: "Prioritize auth boundaries, input handling, and data exposure.",
+		Intensity:    2,
+		BeadPrefix:   "sec-88",
+		Target:       "Authentication middleware",
+		FocusAreas:   []string{"token validation", "authorization checks"},
+	}
+
+	assertRenderedContainsFromFS(t, RoleSessionTemplate, "role-session/.team.tmpl", data, "team=audit-role-security")
+	assertRenderedContainsFromFS(t, RoleSessionTemplate, "role-session/.team.tmpl", data, "epic_bead_id=epic-101")
+	assertRenderedContainsFromFS(t, RoleSessionTemplate, "role-session/.team.tmpl", data, "role=Security specialist")
+	assertRenderedContainsFromFS(t, RoleSessionTemplate, "role-session/INSTRUCTIONS.md.tmpl", data, "Use the role bead prefix `sec-88`")
+	assertRenderedContainsFromFS(t, RoleSessionTemplate, "role-session/context/TASK.md.tmpl", data, "- Epic bead: `epic-101`")
+	assertRenderedContainsFromFS(t, RoleSessionTemplate, "role-session/context/TASK.md.tmpl", data, "- authorization checks")
+}
+
 func assertRenderedContains(t *testing.T, filePath string, data any, want string) {
 	t.Helper()
 
-	src, err := fs.ReadFile(AuditTemplate, filePath)
+	assertRenderedContainsFromFS(t, AuditTemplate, filePath, data, want)
+}
+
+func assertRenderedContainsFromFS(t *testing.T, templateFS fs.FS, filePath string, data any, want string) {
+	t.Helper()
+
+	src, err := fs.ReadFile(templateFS, filePath)
 	if err != nil {
 		t.Fatalf("read %s: %v", filePath, err)
 	}
