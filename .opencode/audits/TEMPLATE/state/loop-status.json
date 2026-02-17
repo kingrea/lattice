@@ -1,0 +1,10 @@
+{
+  "current_loop": 0,
+  "max_loops": 1,
+  "early_exit": false,
+  "investigators": {
+    "investigator-alpha": {"status": "IDLE", "last_summary": ""},
+    "investigator-bravo": {"status": "IDLE", "last_summary": ""},
+    "investigator-charlie": {"status": "IDLE", "last_summary": ""}
+  }
+}

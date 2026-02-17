@@ -3,6 +3,7 @@ package tui
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -53,6 +54,9 @@ func TestCheckAndAdvanceRolesRunningCompletesThenNextLaunches(t *testing.T) {
 	}
 	if len(manager.windowCalls) != 1 || manager.windowCalls[0] != "sess:audit-perf-bravo" {
 		t.Fatalf("unexpected window calls: %#v", manager.windowCalls)
+	}
+	if len(manager.keyCalls) != 1 || !strings.Contains(manager.keyCalls[0], "&& (test -d .beads || bd init -q --skip-hooks --skip-merge-driver) && bd onboard && opencode run auditor") {
+		t.Fatalf("unexpected send-keys calls: %#v", manager.keyCalls)
 	}
 }
 

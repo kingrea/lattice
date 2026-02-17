@@ -43,7 +43,7 @@ func TestMenuViewShowsBrandingAndOptions(t *testing.T) {
 
 	view := NewMenuModel().View()
 
-	for _, fragment := range []string{"LATTICE", "Main Menu", "Audit", "Quit"} {
+	for _, fragment := range []string{"LATTICE", Version, "Main Menu", "Audit", "Quit"} {
 		if !strings.Contains(view, fragment) {
 			t.Fatalf("expected view to include %q", fragment)
 		}

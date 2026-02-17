@@ -1,0 +1,10 @@
+{
+  "streams": {
+    "orchestrator": {"messages": 0},
+    "investigator-alpha": {"messages": 0},
+    "investigator-bravo": {"messages": 0},
+    "investigator-charlie": {"messages": 0},
+    "scribe": {"messages": 0},
+    "chatroom": {"messages": 0}
+  }
+}

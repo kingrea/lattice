@@ -123,7 +123,7 @@ func TestLaunchAuditOrchestratesSessionAndTeams(t *testing.T) {
 	if len(fakeManager.keyCalls) != 2 {
 		t.Fatalf("expected 2 send-keys calls, got %d", len(fakeManager.keyCalls))
 	}
-	if !strings.Contains(fakeManager.keyCalls[0], "cd '") || !strings.Contains(fakeManager.keyCalls[0], "&& opencode run auditor") {
+	if !strings.Contains(fakeManager.keyCalls[0], "cd '") || !strings.Contains(fakeManager.keyCalls[0], "&& (test -d .beads || bd init -q --skip-hooks --skip-merge-driver) && bd onboard && opencode run auditor") {
 		t.Fatalf("unexpected first send-keys command: %q", fakeManager.keyCalls[0])
 	}
 	if strings.Contains(strings.Join(fakeManager.keyCalls, "\n"), "perf-bravo") || strings.Contains(strings.Join(fakeManager.keyCalls, "\n"), "mem-bravo") {

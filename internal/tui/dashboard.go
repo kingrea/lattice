@@ -180,6 +180,9 @@ func (m DashboardModel) View() string {
 		"",
 		m.styles.Body.Render(fmt.Sprintf("Session: %s", fallbackText(m.sessionName, "(loading...)"))),
 	}
+	if strings.TrimSpace(m.sessionName) != "" {
+		lines = append(lines, m.styles.Muted.Render(fmt.Sprintf("Attach: tmux attach -t %s", m.sessionName)))
+	}
 
 	if !m.lastUpdated.IsZero() {
 		lines = append(lines, m.styles.Muted.Render(fmt.Sprintf("Last refresh: %s", m.lastUpdated.Format(time.Kitchen))))
@@ -192,7 +195,7 @@ func (m DashboardModel) View() string {
 		lines = append(lines, "", m.styles.Success.Render("All roles reached a terminal state. Review failed items before closing out."))
 	}
 
-	lines = append(lines, "", m.renderEpicTable(), "", m.styles.Help.Render("t: attach tmux  r: refresh  esc: menu  q: quit"))
+	lines = append(lines, "", m.renderEpicTable(), "", m.styles.Help.Render("t: attach tmux  r: refresh  esc: menu  q: quit  (in tmux: Ctrl+b then d to detach)"))
 
 	return lipgloss.JoinVertical(lipgloss.Left, lines...)
 }

@@ -5,7 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"time"
 
 	"github.com/BurntSushi/toml"
@@ -75,7 +78,7 @@ type Config struct {
 // If config.toml already exists, it is loaded and returned.
 func Init(cwd string) (*Config, error) {
 	dirPath := filepath.Join(cwd, DirName)
-	if err := os.MkdirAll(dirPath, 0o755); err != nil {
+	if err := ensureDir(dirPath); err != nil {
 		return nil, fmt.Errorf("create lattice directory: %w", err)
 	}
 
@@ -93,6 +96,53 @@ func Init(cwd string) (*Config, error) {
 	}
 
 	return cfg, nil
+}
+
+func ensureDir(path string) error {
+	var lastErr error
+	for range 3 {
+		err := os.MkdirAll(path, 0o755)
+		if err == nil {
+			return nil
+		}
+
+		lastErr = err
+		if !errors.Is(err, os.ErrExist) {
+			return err
+		}
+
+		info, statErr := os.Stat(path)
+		if statErr == nil {
+			if info.IsDir() {
+				return nil
+			}
+			return fmt.Errorf("%s exists but is not a directory", path)
+		}
+
+		if !errors.Is(statErr, os.ErrNotExist) {
+			return statErr
+		}
+
+		if winErr := mkdirWithWindows(path); winErr == nil {
+			return nil
+		}
+
+		lstatInfo, lstatErr := os.Lstat(path)
+		if lstatErr == nil {
+			return fmt.Errorf("%s exists as %s", path, lstatInfo.Mode().Type())
+		}
+		if !errors.Is(lstatErr, os.ErrNotExist) {
+			return lstatErr
+		}
+
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	if lastErr != nil {
+		return lastErr
+	}
+
+	return nil
 }
 
 // Load reads and decodes .lattice/config.toml.
@@ -139,7 +189,7 @@ func (c *Config) Save() error {
 		c.Roles = map[string]RoleState{}
 	}
 
-	if err := os.MkdirAll(filepath.Dir(c.filePath), 0o755); err != nil {
+	if err := ensureDir(filepath.Dir(c.filePath)); err != nil {
 		return fmt.Errorf("create lattice directory: %w", err)
 	}
 
@@ -163,6 +213,58 @@ func (c *Config) Save() error {
 	}
 
 	return nil
+}
+
+func mkdirWithWindows(path string) error {
+	if runtime.GOOS != "linux" {
+		return fmt.Errorf("windows fallback unavailable on %s", runtime.GOOS)
+	}
+
+	windowsPath, ok := toWindowsPath(path)
+	if !ok {
+		return fmt.Errorf("path %q is not a drvfs mount", path)
+	}
+
+	if err := exec.Command("cmd.exe", "/c", "mkdir", windowsPath).Run(); err != nil {
+		if info, statErr := os.Stat(path); statErr == nil && info.IsDir() {
+			return nil
+		}
+		return err
+	}
+
+	info, err := os.Stat(path)
+	if err != nil {
+		return err
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("%s exists but is not a directory", path)
+	}
+
+	return nil
+}
+
+func toWindowsPath(path string) (string, bool) {
+	trimmed := filepath.Clean(strings.TrimSpace(path))
+	if !strings.HasPrefix(trimmed, "/mnt/") {
+		return "", false
+	}
+
+	parts := strings.Split(trimmed, "/")
+	if len(parts) < 4 {
+		return "", false
+	}
+
+	drive := strings.TrimSpace(parts[2])
+	if len(drive) != 1 {
+		return "", false
+	}
+
+	rest := strings.Join(parts[3:], `\`)
+	if rest == "" {
+		return strings.ToUpper(drive) + `:\\`, true
+	}
+
+	return strings.ToUpper(drive) + `:\\` + rest, true
 }
 
 func defaultConfig(cwd string) *Config {

@@ -276,7 +276,7 @@ func launchScheduledRole(cwd string, sessionName string, epic teams.EpicBead, st
 		return ScheduledRole{}, state, fmt.Errorf("translate role session path for %s/%s: %w", epic.AuditType.ID, role.CodeName, err)
 	}
 
-	command := fmt.Sprintf("cd %s && opencode run auditor", shellQuote(wslRoleDir))
+	command := fmt.Sprintf("cd %s && (test -d .beads || bd init -q --skip-hooks --skip-merge-driver) && bd onboard && opencode run auditor", shellQuote(wslRoleDir))
 	if err := deps.TmuxManager.SendKeys(sessionName, windowName, command); err != nil {
 		return ScheduledRole{}, state, fmt.Errorf("launch auditor for %s/%s: %w", epic.AuditType.ID, role.CodeName, err)
 	}

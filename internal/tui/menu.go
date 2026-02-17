@@ -105,7 +105,7 @@ func (m MenuModel) Update(msg tea.Msg) (MenuModel, tea.Cmd) {
 func (m MenuModel) View() string {
 	var lines []string
 
-	lines = append(lines, m.styles.Header.Render("LATTICE"))
+	lines = append(lines, m.styles.Header.Render(titleWithVersion()))
 	lines = append(lines, m.styles.Subheader.Render("Main Menu"))
 	lines = append(lines, "")
 

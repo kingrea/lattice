@@ -160,7 +160,7 @@ func launchAudit(req launchRequest, deps launchDeps) tea.Msg {
 					return LaunchFailedMsg{Err: fmt.Errorf("translate role session path for %s/%s: %w", auditType.ID, role.CodeName, err)}
 				}
 
-				command := fmt.Sprintf("cd %s && opencode run auditor", shellQuote(wslRoleDir))
+				command := fmt.Sprintf("cd %s && (test -d .beads || bd init -q --skip-hooks --skip-merge-driver) && bd onboard && opencode run auditor", shellQuote(wslRoleDir))
 				if err := manager.SendKeys(sessionName, windowName, command); err != nil {
 					return LaunchFailedMsg{Err: fmt.Errorf("launch auditor for %s/%s: %w", auditType.ID, role.CodeName, err)}
 				}
